@@ -7,6 +7,7 @@
     mysql_root_password: "Hello@123"  # Change this to your actual MySQL root password
     mysql_database: "ChhayMonyneath-db"  # Set the correct database name
     backup_path: "/home/neath/Documents/DevOps/Final-Exam/backup.sql"  # Backup file location
+    git_repo_url: "https://github.com/ChhayMonyneath123/Final-exam.git"  # GitHub repository URL
 
   tasks:
     # Step 1: Get the current running pod name dynamically based on the label
@@ -27,10 +28,21 @@
       debug:
         msg: "Working with pod: {{ pod_name }}"
 
-    # Step 2: Log into the web server pod and check for changes in the Git repository
+    # Step 2: Clone or pull the GitHub repository
+    - name: Clone the repository if not already cloned
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && if [ ! -d '.git' ]; then git clone {{ git_repo_url }} .; fi"
+      when: git_status.stdout == ""
+
+    - name: Pull the latest changes from the GitHub repository
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
+      when: git_status.stdout != ""
+
+    # Step 3: Check the status of the git repository
     - name: Check the status of the git repository
       shell: |
-        kubectl exec -it {{ pod_name }} -- bash -c "cd /var/www/html && git status"
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git status"
       register: git_status
       changed_when: false
 
@@ -40,26 +52,26 @@
           - "'nothing to commit' in git_status.stdout"
         fail_msg: "There are local changes in the repository, please commit or discard them before pulling."
 
-    # Step 3: Pull the latest changes from the Git repository
+    # Step 4: Pull the latest changes from the Git repository
     - name: Pull latest changes from the Git repository
       shell: |
-        kubectl exec -it {{ pod_name }} -- bash -c "cd /var/www/html && git pull"
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
       when: "'nothing to commit' in git_status.stdout"
 
-    # Step 4: Build Composer dependencies
-    - name: Install Composer dependencies
+    # Step 5: Build Composer dependencies
+    - name: Install Composer dependencies in the web-server container
       shell: |
-        kubectl exec -it {{ pod_name }} -- bash -c "cd /var/www/html && composer install --no-dev --optimize-autoloader"
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && composer install --no-dev --optimize-autoloader"
 
-    # Step 5: Build npm dependencies
-    - name: Install npm dependencies
+    # Step 6: Build npm dependencies
+    - name: Install npm dependencies in the web-server container
       shell: |
-        kubectl exec -it {{ pod_name }} -- bash -c "cd /var/www/html && npm install --production"
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && npm install --production"
 
-    # Step 6: Run tests on SQLite database
-    - name: Run tests on SQLite database
+    # Step 7: Run tests on SQLite database
+    - name: Run tests on SQLite database in the web-server container
       shell: |
-        kubectl exec -it {{ pod_name }} -- bash -c "cd /var/www/html && php artisan test --env=testing"
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && php artisan test --env=testing"
       register: test_result
 
     - name: Verify SQLite is being used in the test environment
@@ -68,8 +80,8 @@
           - "'SQLite' in test_result.stdout"
         fail_msg: "The testing environment is not using SQLite."
 
-    # Step 7: Backup MySQL database (if test db is SQLite)
-    - name: Backup the MySQL database
+    # Step 8: Backup MySQL database (if test db is SQLite)
+    - name: Backup the MySQL database in the mysql-db container
       shell: |
         kubectl exec -it {{ pod_name }} -c mysql-db -- bash -c "mysqldump -u root -p{{ mysql_root_password }} {{ mysql_database }} > {{ backup_path }}"
       when: "'SQLite' not in test_result.stdout"
