@@ -33,13 +33,13 @@
       changed_when: false
       ignore_errors: true
 
-    # Step 3: Install git if not found
-    - name: Install git in the web-server container
+    # Step 3: Fix broken dependencies and install git
+    - name: Fix broken dependencies and install git in the web-server container
       shell: |
-        kubectl exec {{ pod_name }} -c web-server -- bash -c "apt-get update && apt-get install -y git"
+        kubectl exec {{ pod_name }} -c web-server -- bash -c "apt-get update && apt-get install -y --fix-broken && apt-get install -y git"
       when: git_check.rc != 0 or git_check.stdout == ""
       changed_when: true
-      ignore_errors: true  # Some containers may not support apt-get
+      ignore_errors: true  # Allow retry if it fails initially
 
     # Step 4: Clone Git repository if not present
     - name: Clone Git repository into web-server container
@@ -69,7 +69,7 @@
     - name: Pull latest changes from the Git repository
       shell: |
         kubectl exec {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
-      when: '"nothing to commit" in git_status.stdout' and git_status.rc == 0
+      when: '"nothing to commit" in git_status.stdout and git_status.rc == 0'
       ignore_errors: true
 
     # Step 7: Install Composer dependencies
