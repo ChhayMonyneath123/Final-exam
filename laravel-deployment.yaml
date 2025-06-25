@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: laravel-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: laravel
+  template:
+    metadata:
+      labels:
+        app: laravel
+    spec:
+      containers:
+        - name: web-server
+          image: php:8.2-fpm
+          ports:
+            - containerPort: 8080  # Exposing port for web access
+            - containerPort: 22     # Exposing port for SSH (useful for development)
+          volumeMounts:
+            - name: web-volume
+              mountPath: /var/www/html  # Mounting the Laravel project folder
+            - name: nginx-config
+              mountPath: /etc/nginx  # Mounting NGINX configuration
+          command: ["/bin/sh", "-c", "service nginx start && php-fpm"]
+        - name: mysql-db
+          image: mysql:8.0
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: "Hello@123"  # MySQL root password
+            - name: MYSQL_DATABASE
+              value: "ChhayMonyneath-db"  # Database name
+          ports:
+            - containerPort: 3306  # Exposing MySQL port
+          volumeMounts:
+            - name: mysql-volume
+              mountPath: /var/lib/mysql  # Mounting MySQL data directory
+      volumes:
+        - name: web-volume
+          emptyDir: {}  # Temporary volume for web server (you can switch to a persistent volume if needed)
+        - name: mysql-volume
+          emptyDir: {}  # Temporary volume for MySQL data
+        - name: nginx-config
+          configMap:
+            name: nginx-configmap  # This should be a ConfigMap containing your NGINX configuration
