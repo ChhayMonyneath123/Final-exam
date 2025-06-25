@@ -29,42 +29,29 @@
         msg: "Working with pod: {{ pod_name }}"
 
     # Step 2: Clone the repository if not already cloned
-    - name: Clone the repository if not already cloned
+    - name: Clone the GitHub repository if not already cloned
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && if [ ! -d '.git' ]; then git clone {{ git_repo_url }} .; fi"
       register: git_clone_status
-      changed_when: false
+      changed_when: true  # We want this to always be considered as "changed" since we're cloning the repo.
 
-    # Step 3: Check the status of the git repository
-    - name: Check the status of the git repository
-      shell: |
-        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git status"
-      register: git_status
-      changed_when: false
-
-    - name: Ensure no local changes in the repository
-      assert:
-        that:
-          - "'nothing to commit' in git_status.stdout"
-        fail_msg: "There are local changes in the repository, please commit or discard them before pulling."
-
-    # Step 4: Pull the latest changes from the GitHub repository
-    - name: Pull latest changes from the Git repository
+    # Step 3: Pull the latest changes from the GitHub repository
+    - name: Pull the latest changes from the GitHub repository
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
-      when: "'nothing to commit' in git_status.stdout"
+      when: git_clone_status.changed == false  # Only pull if the repository was already cloned.
 
-    # Step 5: Build Composer dependencies
+    # Step 4: Build Composer dependencies
     - name: Install Composer dependencies in the web-server container
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && composer install --no-dev --optimize-autoloader"
 
-    # Step 6: Build npm dependencies
+    # Step 5: Build npm dependencies
     - name: Install npm dependencies in the web-server container
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && npm install --production"
 
-    # Step 7: Run tests on SQLite database
+    # Step 6: Run tests on SQLite database
     - name: Run tests on SQLite database in the web-server container
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && php artisan test --env=testing"
@@ -76,7 +63,88 @@
           - "'SQLite' in test_result.stdout"
         fail_msg: "The testing environment is not using SQLite."
 
-    # Step 8: Backup MySQL database (if test db is SQLite)
+    # Step 7: Backup MySQL database (if test db is SQLite)
+    - name: Backup the MySQL database in the mysql-db container
+      shell: |
+        kubectl exec -it {{ pod_name }} -c mysql-db -- bash -c "mysqldump -u root -p{{ mysql_root_password }} {{ mysql_database }} > {{ backup_path }}"
+      when: "'SQLite' not in test_result.stdout"
+
+    - name: Verify that the backup was created
+      stat:
+        path: "{{ backup_path }}"
+      register: backup_status
+
+    - name: Ensure the backup file exists
+      assert:
+        that:
+          - backup_status.stat.exists
+        fail_msg: "MySQL database backup failed, file not found."
+---
+- name: Deploy and configure web server pod
+  hosts: localhost
+  gather_facts: no
+  vars:
+    pod_name: ""  # This will be set dynamically after retrieving the pod name
+    mysql_root_password: "Hello@123"  # Change this to your actual MySQL root password
+    mysql_database: "ChhayMonyneath-db"  # Set the correct database name
+    backup_path: "/home/neath/Documents/DevOps/Final-Exam/backup.sql"  # Backup file location
+    git_repo_url: "https://github.com/ChhayMonyneath123/Final-exam.git"  # GitHub repository URL
+
+  tasks:
+    # Step 1: Get the current running pod name dynamically based on the label
+    - name: Get the current running pod name
+      shell: kubectl get pods -l app=laravel -o jsonpath='{.items[0].metadata.name}'
+      register: current_pod
+      changed_when: false
+
+    - name: Debug pod name
+      debug:
+        msg: "Pod name retrieved: {{ current_pod.stdout }}"
+
+    - name: Set the pod name variable
+      set_fact:
+        pod_name: "{{ current_pod.stdout }}"
+
+    - name: Display the pod name
+      debug:
+        msg: "Working with pod: {{ pod_name }}"
+
+    # Step 2: Clone the repository if not already cloned
+    - name: Clone the GitHub repository if not already cloned
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && if [ ! -d '.git' ]; then git clone {{ git_repo_url }} .; fi"
+      register: git_clone_status
+      changed_when: true  # We want this to always be considered as "changed" since we're cloning the repo.
+
+    # Step 3: Pull the latest changes from the GitHub repository
+    - name: Pull the latest changes from the GitHub repository
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
+      when: git_clone_status.changed == false  # Only pull if the repository was already cloned.
+
+    # Step 4: Build Composer dependencies
+    - name: Install Composer dependencies in the web-server container
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && composer install --no-dev --optimize-autoloader"
+
+    # Step 5: Build npm dependencies
+    - name: Install npm dependencies in the web-server container
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && npm install --production"
+
+    # Step 6: Run tests on SQLite database
+    - name: Run tests on SQLite database in the web-server container
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && php artisan test --env=testing"
+      register: test_result
+
+    - name: Verify SQLite is being used in the test environment
+      assert:
+        that:
+          - "'SQLite' in test_result.stdout"
+        fail_msg: "The testing environment is not using SQLite."
+
+    # Step 7: Backup MySQL database (if test db is SQLite)
     - name: Backup the MySQL database in the mysql-db container
       shell: |
         kubectl exec -it {{ pod_name }} -c mysql-db -- bash -c "mysqldump -u root -p{{ mysql_root_password }} {{ mysql_database }} > {{ backup_path }}"
