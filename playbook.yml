@@ -12,7 +12,7 @@
     - name: Verify Kubernetes cluster is ready
       command: kubectl cluster-info
       register: k8s_ready
-      ignore_errors: yes
+      failed_when: k8s_ready.rc != 0
       changed_when: false
 
     - name: Create Kubernetes deployment file
@@ -36,64 +36,66 @@
                   app: laravel
               spec:
                 containers:
-                - name: webserver
-                  image: php:8.2-fpm
-                  ports:
-                    - containerPort: 8080
-                    - containerPort: 22
-                  env:
-                    - name: DB_HOST
-                      value: "127.0.0.1"
-                    - name: DB_DATABASE
-                      value: "{{ db_name }}"
-                    - name: DB_USERNAME
-                      value: "root"
-                    - name: DB_PASSWORD
-                      value: "{{ db_password }}"
-                  volumeMounts:
-                    - name: laravel-code
-                      mountPath: /var/www/html
-                  command: ["/bin/sh", "-c"]
-                  args:
-                    - |
-                      apt-get update && \
-                      apt-get install -y nginx git openssh-server libzip-dev zip unzip && \
-                      docker-php-ext-install zip pdo_mysql && \
-                      mkdir -p /run/nginx && \
-                      if [ ! -d /var/www/html/laravel-project ]; then \
-                        git clone {{ repo_url }} /var/www/html/laravel-project; \
-                        cd /var/www/html/laravel-project && composer install; \
-                      fi && \
-                      echo 'server { \
-                        listen 8080; \
-                        root /var/www/html/laravel-project/public; \
-                        index index.php index.html index.htm; \
-                        location / { try_files $uri $uri/ /index.php?$query_string; } \
-                        location ~ \.php$ { \
-                          fastcgi_pass 127.0.0.1:9000; \
-                          fastcgi_index index.php; \
-                          fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; \
-                          include fastcgi_params; \
-                        } \
-                      }' > /etc/nginx/sites-available/default && \
-                      chown -R www-data:www-data /var/www/html/laravel-project/storage && \
-                      chown -R www-data:www-data /var/www/html/laravel-project/bootstrap/cache && \
-                      service ssh start && \
-                      php-fpm -D && \
-                      nginx -g "daemon off;"
+                  - name: webserver
+                    image: php:8.2-fpm
+                    ports:
+                      - containerPort: 8080
+                      - containerPort: 22
+                    env:
+                      - name: DB_HOST
+                        value: "mysql"  # Use 'mysql' container name here
+                      - name: DB_DATABASE
+                        value: "{{ db_name }}"
+                      - name: DB_USERNAME
+                        value: "root"
+                      - name: DB_PASSWORD
+                        value: "{{ db_password }}"
+                    volumeMounts:
+                      - name: laravel-code
+                        mountPath: /var/www/html
+                    command: ["/bin/sh", "-c"]
+                    args:
+                      - |
+                        apt-get update && \
+                        apt-get install -y nginx git openssh-server libzip-dev zip unzip && \
+                        docker-php-ext-install zip pdo_mysql && \
+                        mkdir -p /run/nginx && \
+                        if [ ! -d /var/www/html/laravel-project ]; then \
+                          git clone {{ repo_url }} /var/www/html/laravel-project; \
+                        else \
+                          cd /var/www/html/laravel-project && git pull; \
+                        fi && \
+                        cd /var/www/html/laravel-project && composer install && \
+                        echo 'server { \
+                          listen 8080; \
+                          root /var/www/html/laravel-project/public; \
+                          index index.php index.html index.htm; \
+                          location / { try_files $uri $uri/ /index.php?$query_string; } \
+                          location ~ \.php$ { \
+                            fastcgi_pass 127.0.0.1:9000; \
+                            fastcgi_index index.php; \
+                            fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; \
+                            include fastcgi_params; \
+                          } \
+                        }' > /etc/nginx/sites-available/default && \
+                        chown -R www-data:www-data /var/www/html/laravel-project/storage && \
+                        chown -R www-data:www-data /var/www/html/laravel-project/bootstrap/cache && \
+                        service ssh start && \
+                        php-fpm -D && \
+                        nginx -g "daemon off;"
 
-                - name: mysql
-                  image: mysql:8.0
-                  env:
-                    - name: MYSQL_ROOT_PASSWORD
-                      value: "{{ db_password }}"
-                    - name: MYSQL_DATABASE
-                      value: "{{ db_name }}"
-                  ports:
-                    - containerPort: 3306
-                  volumeMounts:
-                    - name: mysql-data
-                      mountPath: /var/lib/mysql
+                  - name: mysql
+                    image: mysql:8.0
+                    env:
+                      - name: MYSQL_ROOT_PASSWORD
+                        value: "{{ db_password }}"
+                      - name: MYSQL_DATABASE
+                        value: "{{ db_name }}"
+                    ports:
+                      - containerPort: 3306
+                    volumeMounts:
+                      - name: mysql-data
+                        mountPath: /var/lib/mysql
 
                 volumes:
                   - name: laravel-code
