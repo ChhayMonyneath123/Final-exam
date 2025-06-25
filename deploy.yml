@@ -28,16 +28,12 @@
       debug:
         msg: "Working with pod: {{ pod_name }}"
 
-    # Step 2: Clone or pull the GitHub repository
+    # Step 2: Clone the repository if not already cloned
     - name: Clone the repository if not already cloned
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && if [ ! -d '.git' ]; then git clone {{ git_repo_url }} .; fi"
-      when: git_status.stdout == ""
-
-    - name: Pull the latest changes from the GitHub repository
-      shell: |
-        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
-      when: git_status.stdout != ""
+      register: git_clone_status
+      changed_when: false
 
     # Step 3: Check the status of the git repository
     - name: Check the status of the git repository
@@ -52,7 +48,7 @@
           - "'nothing to commit' in git_status.stdout"
         fail_msg: "There are local changes in the repository, please commit or discard them before pulling."
 
-    # Step 4: Pull the latest changes from the Git repository
+    # Step 4: Pull the latest changes from the GitHub repository
     - name: Pull latest changes from the Git repository
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
