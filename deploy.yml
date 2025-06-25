@@ -28,12 +28,13 @@
       debug:
         msg: "Working with pod: {{ pod_name }}"
 
-    # Step 2: Install Composer in the web-server container (if not already installed)
-    - name: Install Composer in the web-server container
+    # Step 2: Install Git in the web-server container if not already installed
+    - name: Install Git in the web-server container
       shell: |
-        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && curl -sS https://getcomposer.org/installer | php"
-      register: composer_install
-      changed_when: true  # Mark this task as changed, since it installs Composer
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "apt-get update && apt-get install -y git"
+      register: git_install_status
+      changed_when: true  # This marks the task as changed since we are installing git
+      when: git_install_status is not defined
 
     # Step 3: Clone the repository if not already cloned
     - name: Clone the GitHub repository if not already cloned
