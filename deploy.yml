@@ -61,7 +61,7 @@
     - name: Ensure no local changes in the repository
       assert:
         that:
-          - "'nothing to commit' in git_status.stdout"
+          - '"nothing to commit" in git_status.stdout'
         fail_msg: "There are local changes in the repository, please commit or discard them before pulling."
       when: git_status.rc == 0
 
@@ -69,7 +69,7 @@
     - name: Pull latest changes from the Git repository
       shell: |
         kubectl exec {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
-      when: "'nothing to commit' in git_status.stdout" and git_status.rc == 0
+      when: '"nothing to commit" in git_status.stdout' and git_status.rc == 0
       ignore_errors: true
 
     # Step 7: Install Composer dependencies
@@ -97,7 +97,7 @@
     - name: Verify SQLite is being used in the test environment
       assert:
         that:
-          - "'SQLite' in test_result.stdout"
+          - '"SQLite" in test_result.stdout'
         fail_msg: "The testing environment is not using SQLite."
         success_msg: "SQLite is confirmed in the testing environment."
       when: test_result.rc == 0
