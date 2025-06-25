@@ -4,9 +4,9 @@
   connection: local
   become: no
   vars:
-    db_name: "rotha-db"
+    db_name: "ChhayMonyneath-db"
     db_password: "Hello@123"
-    repo_url: "https://github.com/RothaChheng/FinalExamDevOps.git"
+    repo_url: "https://github.com/ChhayMonyneath123/Final-exam.git"
 
   tasks:
     - name: Verify Kubernetes cluster is ready
@@ -17,23 +17,23 @@
 
     - name: Create Kubernetes deployment file
       copy:
-        dest: "laravel-mysql-deployment.yaml"
+        dest: "laravel-deployment.yaml"
         content: |
           apiVersion: apps/v1
           kind: Deployment
           metadata:
-            name: laravel-mysql-deployment
+            name: laravel-deployment
             labels:
-              app: laravel-mysql
+              app: laravel
           spec:
             replicas: 1
             selector:
               matchLabels:
-                app: laravel-mysql
+                app: laravel
             template:
               metadata:
                 labels:
-                  app: laravel-mysql
+                  app: laravel
               spec:
                 containers:
                 - name: webserver

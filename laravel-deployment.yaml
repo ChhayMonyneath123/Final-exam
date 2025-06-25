@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: laravel-deployment
+  labels:
+    app: laravel
 spec:
   replicas: 1
   selector:
@@ -13,40 +15,67 @@ spec:
         app: laravel
     spec:
       containers:
-        - name: web-server
-          image: php:8.2-fpm
-          ports:
-            - containerPort: 8080  # Exposing port for web access
-            - containerPort: 22     # Exposing port for SSH (useful for development)
-          volumeMounts:
-            - name: web-volume
-              mountPath: /var/www/html  # Mounting the Laravel project folder
-            - name: nginx-config
-              mountPath: /etc/nginx  # Mounting NGINX configuration
-          command:
-            - /bin/sh
-            - -c
-            - |
-              apt-get update && apt-get install -y nginx
-              service nginx start
-              php-fpm
-        - name: mysql-db
-          image: mysql:8.0
-          env:
-            - name: MYSQL_ROOT_PASSWORD
-              value: "Hello@123"  # MySQL root password
-            - name: MYSQL_DATABASE
-              value: "ChhayMonyneath-db"  # Database name
-          ports:
-            - containerPort: 3306  # Exposing MySQL port
-          volumeMounts:
-            - name: mysql-volume
-              mountPath: /var/lib/mysql  # Mounting MySQL data directory
+      - name: webserver
+        image: php:8.2-fpm
+        ports:
+          - containerPort: 8080
+          - containerPort: 22
+        env:
+          - name: DB_HOST
+            value: "127.0.0.1"
+          - name: DB_DATABASE
+            value: "ChhayMonyneath-db"
+          - name: DB_USERNAME
+            value: "root"
+          - name: DB_PASSWORD
+            value: "Hello@123"
+        volumeMounts:
+          - name: laravel-code
+            mountPath: /var/www/html
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            apt-get update && \
+            apt-get install -y nginx git openssh-server libzip-dev zip unzip && \
+            docker-php-ext-install zip pdo_mysql && \
+            mkdir -p /run/nginx && \
+            if [ ! -d /var/www/html/laravel-project ]; then \
+              git clone https://github.com/ChhayMonyneath123/Final-exam.git /var/www/html/laravel-project; \
+              cd /var/www/html/laravel-project && composer install; \
+            fi && \
+            echo 'server { \
+              listen 8080; \
+              root /var/www/html/laravel-project/public; \
+              index index.php index.html index.htm; \
+              location / { try_files $uri $uri/ /index.php?$query_string; } \
+              location ~ \.php$ { \
+                fastcgi_pass 127.0.0.1:9000; \
+                fastcgi_index index.php; \
+                fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name; \
+                include fastcgi_params; \
+              } \
+            }' > /etc/nginx/sites-available/default && \
+            chown -R www-data:www-data /var/www/html/laravel-project/storage && \
+            chown -R www-data:www-data /var/www/html/laravel-project/bootstrap/cache && \
+            service ssh start && \
+            php-fpm -D && \
+            nginx -g "daemon off;"
+
+      - name: mysql
+        image: mysql:8.0
+        env:
+          - name: MYSQL_ROOT_PASSWORD
+            value: "Hello@123"
+          - name: MYSQL_DATABASE
+            value: "ChhayMonyneath-db"
+        ports:
+          - containerPort: 3306
+        volumeMounts:
+          - name: mysql-data
+            mountPath: /var/lib/mysql
+
       volumes:
-        - name: web-volume
-          emptyDir: {}  # Temporary volume for web server (you can switch to a persistent volume if needed)
-        - name: mysql-volume
-          emptyDir: {}  # Temporary volume for MySQL data
-        - name: nginx-config
-          configMap:
-            name: nginx-configmap  # This should be a ConfigMap containing your NGINX configuration
+        - name: laravel-code
+          emptyDir: {}
+        - name: mysql-data
+          emptyDir: {}
