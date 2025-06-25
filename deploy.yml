@@ -87,7 +87,7 @@
     # Step 9: Backup MySQL database (if test db is SQLite)
     - name: Backup the MySQL database in the mysql-db container
       shell: |
-        kubectl exec -it {{ pod_name }} -c mysql-db -- bash -c "mysqldump -u root -p{{ mysql_root_password }} {{ mysql_database }} > {{ backup_path }}"
+        kubectl exec {{ pod_name }} -c mysql-db -- bash -c "mysqldump -u root -p{{ mysql_root_password }} {{ mysql_database }} > {{ backup_path }}"
       when: "'SQLite' not in test_result.stdout"
 
     - name: Verify that the backup was created
