@@ -23,7 +23,13 @@ spec:
               mountPath: /var/www/html  # Mounting the Laravel project folder
             - name: nginx-config
               mountPath: /etc/nginx  # Mounting NGINX configuration
-          command: ["/bin/sh", "-c", "service nginx start && php-fpm"]
+          command:
+            - /bin/sh
+            - -c
+            - |
+              apt-get update && apt-get install -y nginx
+              service nginx start
+              php-fpm
         - name: mysql-db
           image: mysql:8.0
           env:
