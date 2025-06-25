@@ -28,18 +28,50 @@
       debug:
         msg: "Working with pod: {{ pod_name }}"
 
+    # Step 2: Install Composer in the web-server container (if not already installed)
+    - name: Install Composer in the web-server container
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && curl -sS https://getcomposer.org/installer | php"
+      register: composer_install
+      changed_when: true  # Mark this task as changed, since it installs Composer
 
-    # Step 4: Build Composer dependencies
+    # Step 3: Clone the repository if not already cloned
+    - name: Clone the GitHub repository if not already cloned
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && if [ ! -d '.git' ]; then git clone {{ git_repo_url }} .; fi"
+      register: git_clone_status
+      changed_when: true  # We want this to always be considered as "changed" since we're cloning the repo.
+
+    # Step 4: Pull the latest changes from the GitHub repository
+    - name: Pull the latest changes from the GitHub repository
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git pull"
+      when: git_clone_status.changed == false  # Only pull if the repository was already cloned.
+
+    # Step 5: Check the status of the git repository
+    - name: Check the status of the git repository
+      shell: |
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && git status"
+      register: git_status
+      changed_when: false
+
+    - name: Ensure no local changes in the repository
+      assert:
+        that:
+          - "'nothing to commit' in git_status.stdout"
+        fail_msg: "There are local changes in the repository, please commit or discard them before pulling."
+
+    # Step 6: Install Composer dependencies in the web-server container
     - name: Install Composer dependencies in the web-server container
       shell: |
-        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && composer install --no-dev --optimize-autoloader"
+        kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && php composer.phar install --no-dev --optimize-autoloader"
 
-    # Step 5: Build npm dependencies
+    # Step 7: Build npm dependencies in the web-server container
     - name: Install npm dependencies in the web-server container
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && npm install --production"
 
-    # Step 6: Run tests on SQLite database
+    # Step 8: Run tests on SQLite database in the web-server container
     - name: Run tests on SQLite database in the web-server container
       shell: |
         kubectl exec -it {{ pod_name }} -c web-server -- bash -c "cd /var/www/html && php artisan test --env=testing"
@@ -51,7 +83,7 @@
           - "'SQLite' in test_result.stdout"
         fail_msg: "The testing environment is not using SQLite."
 
-    # Step 7: Backup MySQL database (if test db is SQLite)
+    # Step 9: Backup MySQL database (if test db is SQLite)
     - name: Backup the MySQL database in the mysql-db container
       shell: |
         kubectl exec -it {{ pod_name }} -c mysql-db -- bash -c "mysqldump -u root -p{{ mysql_root_password }} {{ mysql_database }} > {{ backup_path }}"
